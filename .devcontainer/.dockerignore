@@ -1,4 +1,6 @@
 *
 !Dockerfile
 !init-firewall.sh
+!entrypoint.sh
 !postCreate.sh
+!gitignore_global

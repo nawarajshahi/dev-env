@@ -14,7 +14,15 @@ echo ""
 # Installation Verification
 # ============================================================================
 
-v() { "$@" 2>/dev/null | head -1 || echo "not found"; }
+# First line of a command's output, or "not found"
+v() {
+    local out
+    if out=$("$@" 2>/dev/null) && [ -n "$out" ]; then
+        echo "${out%%$'\n'*}"
+    else
+        echo "not found"
+    fi
+}
 
 echo "--- Installed Tools ---"
 echo ""
@@ -23,12 +31,12 @@ echo "npm:        $(v npm --version)"
 echo "Claude:     $(v claude --version)"
 echo "Python:     $(v python3 --version)"
 echo "uv:         $(v uv --version)"
-echo "coregen:    $(v coregen --version)"
+echo "coregen:    $(v sh -c 'uv tool list | grep "^coregen"')"
 echo "Terraform:  $(v terraform version)"
 echo "OpenTofu:   $(v tofu version)"
 echo "TFLint:     $(v tflint --version)"
 echo "kubectl:    $(v kubectl version --client)"
-echo "talosctl:   $(v talosctl version --client --short)"
+echo "talosctl:   $(v sh -c 'talosctl version --client --short | grep Talos')"
 echo "Helm:       $(v helm version --short)"
 echo "Cilium CLI: $(v cilium version --client)"
 echo "Argo CD:    $(v argocd version --client --short)"
@@ -39,7 +47,7 @@ echo "AWS CLI:    $(v aws --version)"
 echo "Git:        $(v git --version)"
 echo "gh:         $(v gh --version)"
 echo "Make:       $(v make --version)"
-echo "ShellCheck: $(v shellcheck --version | grep '^version:')"
+echo "ShellCheck: $(v sh -c 'shellcheck --version | grep "^version:"')"
 echo ""
 
 # ============================================================================

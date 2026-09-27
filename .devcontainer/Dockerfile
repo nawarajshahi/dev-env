@@ -21,14 +21,14 @@ ARG K9S_VERSION=0.51.0
 ARG YQ_VERSION=4.53.6
 ARG TFLINT_VERSION=0.64.0
 ARG COREGEN_VERSION=1.1.1
-ARG ANSIBLE_CORE_VERSION=2.20.4
+ARG ANSIBLE_CORE_VERSION=2.21.4
 ARG GIT_DELTA_VERSION=0.19.2
-ARG ZSH_IN_DOCKER_VERSION=1.2.0
+ARG ZSH_IN_DOCKER_VERSION=1.2.1
 
-# Rename the default ubuntu user (uid/gid 1000) to ${USERNAME} and strip sudo group
+# Rename the default ubuntu user (uid/gid 1000) to ${USERNAME} and drop every
+# supplementary group (sudo, adm, ...): the user must stay non-admin
 RUN groupmod -n ${USERNAME} ubuntu && \
-  usermod -l ${USERNAME} -d /home/${USERNAME} -m -s /bin/zsh ubuntu && \
-  deluser ${USERNAME} sudo 2>/dev/null || true
+  usermod -l ${USERNAME} -d /home/${USERNAME} -m -s /bin/zsh -G "" ubuntu
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -37,7 +37,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   less \
   git \
   procps \
-  sudo \
   fzf \
   zsh \
   man-db \
@@ -169,22 +168,26 @@ ENV UV_TOOL_DIR=/opt/uv-tools \
 RUN uv tool install "git+https://github.com/skoonin/coregen.git@v${COREGEN_VERSION}" && \
   uv tool install pre-commit && \
   uv tool install ruff && \
-  uv tool install yamllint && \
   uv tool install mypy && \
   uv tool install pytest && \
   uv tool install tox && \
   uv cache clean
 
-# Install commonly used Ansible collections
-RUN ansible-galaxy collection install \
+# Install commonly used Ansible collections system-wide (a plain install as root
+# lands in /root/.ansible, which the unprivileged user cannot see)
+RUN ansible-galaxy collection install -p /usr/share/ansible/collections \
   'amazon.aws:>=11.0.0,<12.0.0' \
   'ansible.posix:>=2.0.0,<3.0.0' \
-  'community.general:>=12.0.0,<13.0.0' \
+  'community.general:>=13.0.0,<14.0.0' \
+  'microsoft.ad:>=1.8.0,<2.0.0' \
+  'ansible.windows:>=3.0.0,<4.0.0' \
+  'community.windows:>=3.0.0,<4.0.0' \
   --force
 
 # System-wide git config: global ignores only. No identity or credentials live
 # in the container; commits and pushes happen on the host.
-RUN git config --system core.excludesFile /home/${USERNAME}/.gitignore_global && \
+COPY gitignore_global /etc/gitignore_global
+RUN git config --system core.excludesFile /etc/gitignore_global && \
   git config --system core.pager delta && \
   git config --system interactive.diffFilter "delta --color-only" && \
   git config --system --add safe.directory '*'
@@ -230,12 +233,16 @@ RUN echo '' >> /home/${USERNAME}/.zshrc && \
 # Install Claude Code
 RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
 
-# Copy and set up firewall and postCreate scripts
-COPY init-firewall.sh /usr/local/bin/
-COPY postCreate.sh /usr/local/bin/
+# Firewall + entrypoint are root-owned and run only at container start (as root).
+# The user gets no sudo: nothing in the container can re-run or relax them.
+COPY --chmod=0755 init-firewall.sh entrypoint.sh postCreate.sh /usr/local/bin/
 USER root
-RUN chmod +x /usr/local/bin/init-firewall.sh && \
-  chmod +x /usr/local/bin/postCreate.sh && \
-  echo "${USERNAME} ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh" > /etc/sudoers.d/${USERNAME}-firewall && \
-  chmod 0440 /etc/sudoers.d/${USERNAME}-firewall
+
+# Strip setuid/setgid bits so no binary can raise privileges (defense in depth
+# alongside --security-opt=no-new-privileges)
+RUN find / -xdev -type f -perm /6000 -exec chmod a-s {} + 2>/dev/null || true
+
 USER ${USERNAME}
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["sleep", "infinity"]
