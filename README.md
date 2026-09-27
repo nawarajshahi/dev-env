@@ -26,7 +26,6 @@ Unified devcontainer workspace for working with Claude Code across all repos in 
 On the host machine you need:
 - Docker Desktop
 - VS Code with the Dev Containers extension
-- `~/.gitignore_global` and `~/.bash_aliases` (bind-mounted read-only; create empty files if you have none)
 - `~/repos/` populated with your project repos
 
 Nothing else: no Terraform, Python, kubectl, etc. on the host.
@@ -37,7 +36,10 @@ The container is a build/lint/validate environment with **no credentials** and a
 
 - No `~/.ssh`, `~/.aws`, `~/.kube`, `~/.talos`, `~/.gitconfig` or 1Password access is mounted.
 - Generated cluster credentials inside repos (`lapcotek/**/on-prem/*/generated/`) are hidden by empty tmpfs mounts.
-- The user `nabu` has no sudo, except to run the root-owned firewall script.
+- The user `nabu` is unprivileged: no sudo (not installed), no supplementary groups, no setuid binaries, zero capabilities, `no-new-privileges`.
+- Only the entrypoint runs as root, to apply the firewall at start; it fails closed (no firewall, no container).
+- Runtime: `--cap-drop=ALL` (plus `NET_ADMIN`/`NET_RAW` for the firewall), `--pids-limit`, default seccomp, no Docker socket, not `--privileged`.
+- Nothing outside `~/repos` is mounted, so Docker Desktop file sharing can be limited to `~/repos` (see below).
 - `dev-env/` itself is mounted read-only, so nothing in the container can relax these settings.
 - Outbound network is limited to an allowlist (see below); the LAN is not reachable.
 - Credentialed commands (`tofu apply`, `op`, `ssh`, `git push`, `kubectl` against a cluster) run on the host.
@@ -49,6 +51,12 @@ VS Code forwards some host credentials into dev containers by default. Turn that
 "dev.containers.gitCredentialHelperConfigLocation": "none",
 "dev.containers.dockerCredentialHelper": false
 ```
+
+Also harden Docker Desktop (Settings), since a container escape lands in its Linux VM, which sees every shared host path:
+
+- **Resources → File sharing:** remove `/Users`, `/Volumes`, `/private`, `/tmp`, `/var/folders`; add only `/Users/<you>/repos`.
+- **General → Use Enhanced Container Isolation** if your plan includes it (Business): root in a container is then unprivileged in the VM.
+- Keep Docker Desktop updated: container-escape fixes ship there.
 
 The SSH agent VS Code forwards is blanked via `remoteEnv` and unset in `.zshrc`. `postCreate.sh` prints a warning if any credential leaks in.
 
@@ -73,9 +81,9 @@ Versions are pinned as build args in `.devcontainer/devcontainer.json`.
 | Argo CD CLI | 3.5.3 |
 | k9s | 0.51.0 |
 | yq / jq | 4.53.6 / system |
-| Ansible core | 2.20.4 (+ ansible-lint) |
+| Ansible core | 2.21.4 (+ ansible-lint) |
 | AWS CLI | v2 (no credentials) |
-| Python CLIs | pre-commit, ruff, black, flake8, pylint, mypy, pytest, tox, yamllint |
+| Python CLIs | pre-commit, ruff, black, flake8, pylint, mypy, pytest, tox, yamllint (via ansible-lint) |
 | gh, git-delta, shellcheck, make | latest / 0.19.2 / system / system |
 | zsh + Powerlevel10k | with fzf, git-delta, autosuggestions |
 
@@ -97,4 +105,4 @@ The container runs a whitelist-based firewall allowing only:
 - PyPI, Ansible Galaxy
 - VS Code marketplace services
 
-Add domains in `.devcontainer/init-firewall.sh`. IPs are resolved at container start.
+Add domains in `.devcontainer/init-firewall.sh`. IPs are resolved at container start; the firewall is applied by the root entrypoint, and the user cannot modify it.
