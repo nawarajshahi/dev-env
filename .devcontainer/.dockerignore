@@ -1,0 +1,4 @@
+*
+!Dockerfile
+!init-firewall.sh
+!postCreate.sh

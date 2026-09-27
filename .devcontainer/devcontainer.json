@@ -1,0 +1,99 @@
+{
+  "name": "Dev Env Workspace",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "args": {
+      "TZ": "${localEnv:TZ:America/New_York}",
+      "USERNAME": "nabu",
+      "CLAUDE_CODE_VERSION": "latest",
+      "NODE_MAJOR": "24",
+      "TERRAFORM_VERSION": "1.16.4",
+      "OPENTOFU_VERSION": "1.12.6",
+      "KUBECTL_VERSION": "1.36.5",
+      "TALOSCTL_VERSION": "1.13.10",
+      "HELM_VERSION": "4.3.0",
+      "CILIUM_CLI_VERSION": "0.20.1",
+      "ARGOCD_VERSION": "3.5.3",
+      "K9S_VERSION": "0.51.0",
+      "YQ_VERSION": "4.53.6",
+      "TFLINT_VERSION": "0.64.0",
+      "UV_VERSION": "0.12.19",
+      "COREGEN_VERSION": "1.1.1",
+      "ANSIBLE_CORE_VERSION": "2.20.4",
+      "GIT_DELTA_VERSION": "0.19.2",
+      "ZSH_IN_DOCKER_VERSION": "1.2.0"
+    }
+  },
+  "runArgs": [
+    "--name=dev-env",
+    "--cap-add=NET_ADMIN",
+    "--cap-add=NET_RAW"
+  ],
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "anthropic.claude-code",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "eamodio.gitlens",
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "hashicorp.terraform",
+        "opentofu.vscode-opentofu",
+        "redhat.ansible",
+        "redhat.vscode-yaml",
+        "timonwong.shellcheck",
+        "editorconfig.editorconfig"
+      ],
+      "settings": {
+        "workbench.colorTheme": "Solarized Dark",
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.codeActionsOnSave": {
+          "source.fixAll.eslint": "explicit"
+        },
+        "terminal.integrated.defaultProfile.linux": "zsh",
+        "terminal.integrated.profiles.linux": {
+          "bash": {
+            "path": "bash",
+            "icon": "terminal-bash"
+          },
+          "zsh": {
+            "path": "zsh"
+          }
+        },
+        "terraform.languageServer.enable": true,
+        "terraform.terraform.path": "/usr/local/bin/terraform"
+      }
+    }
+  },
+  "remoteUser": "nabu",
+  "mounts": [
+    "source=dev-env-bashhistory,target=/commandhistory,type=volume",
+    "source=dev-env-claude-config,target=/home/nabu/.claude,type=volume",
+    "source=${localEnv:HOME}/.gitignore_global,target=/home/nabu/.gitignore_global,type=bind,readonly",
+    "source=${localEnv:HOME}/.bash_aliases,target=/home/nabu/.bash_aliases,type=bind,readonly",
+    "source=${localEnv:HOME}/repos/dev-env,target=/workspace/dev-env,type=bind,readonly",
+    // Hide generated cluster credentials (kubeconfig/talosconfig) that live inside mounted repos
+    "target=/workspace/lapcotek/k8s/on-prem/dev/generated,type=tmpfs",
+    "target=/workspace/lapcotek/k8s/on-prem/staging/generated,type=tmpfs",
+    "target=/workspace/lapcotek/k8s/on-prem/prod/generated,type=tmpfs",
+    "target=/workspace/lapcotek/lapcolab/talos/on-prem/dev/generated,type=tmpfs",
+    "target=/workspace/lapcotek/lapcolab/talos/on-prem/staging/generated,type=tmpfs",
+    "target=/workspace/lapcotek/lapcolab/talos/on-prem/prod/generated,type=tmpfs"
+  ],
+  "containerEnv": {
+    "NODE_OPTIONS": "--max-old-space-size=4096",
+    "CLAUDE_CONFIG_DIR": "/home/nabu/.claude",
+    "POWERLEVEL9K_DISABLE_GITSTATUS": "true"
+  },
+  // VS Code forwards the host SSH agent into the container; blank it out
+  "remoteEnv": {
+    "SSH_AUTH_SOCK": ""
+  },
+  "workspaceMount": "source=${localEnv:HOME}/repos,target=/workspace,type=bind,consistency=delegated",
+  "workspaceFolder": "/workspace",
+  "postCreateCommand": "/usr/local/bin/postCreate.sh",
+  "postStartCommand": "sudo /usr/local/bin/init-firewall.sh",
+  "waitFor": "postStartCommand"
+}
